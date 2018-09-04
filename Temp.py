@@ -17,12 +17,12 @@ from dateutil.relativedelta import relativedelta as rd
 ALPHA_KEY = 'FE8STYV4I7XHRIAI'
 COMM = 0.0055  # Коэффициент размещения денег в одну сторону на 40$ цены тикера
 CONST_COMM = 0.55  # Статичная комиссия, если объём меньше 100 акций
-SLIPP = 0.015  # При каждом стопе проскальзывание 1,5 цента на акцию
+SLIPP = 0.02  # При каждом стопе проскальзывание 2 цента на акцию
 R_START, R_END = 0.88, 1.1
 S_START, S_END = 0.1, 5
 
 # Variables
-analysis_tickers = ['VXX']  # Чтобы скачать с yahoo, нужно выставить время в компьютере NY
+analysis_tickers = ['TLT']  # Чтобы скачать с yahoo, нужно выставить время в компьютере NY
 start_cap = 10000
 
 default_data_dir = 'exportTables'  # Директория
@@ -33,9 +33,9 @@ end_date = datetime.now()
 style = 'open'.lower()  # open - выстраивает логику с открытия сессии, close, выстраивает логику на закрытие
 ratio_step = 0.005
 stop_step = 0.1
-forward_analyse = True  # Создавать ли форвард-файлы с метриками по годам
-file3D = True  # Создавать ли файл для 3D модели
-user_enter = True  # Указывать ли вручную метрики для построения финальной таблицы
+forward_analyse = False  # Создавать ли форвард-файлы с метриками по годам
+file3D = False  # Создавать ли файл для 3D модели
+user_enter = False  # Указывать ли вручную метрики для построения финальной таблицы
 
 # Globals
 alpha_count = 0
@@ -514,7 +514,7 @@ def years_dict(file: pd.DataFrame, ticker: str) -> dict:
                 print(f'Для {ticker} введите Ratio и Stop для {cur_year} года через пробел')
                 temp[str(cur_year)] = [float(_) for _ in input().split()]
             else:
-                temp[str(cur_year)] = [0.935, 1.0]
+                temp[str(cur_year)] = [0.94, 0.5]
     return temp
 
 
@@ -610,6 +610,7 @@ if __name__ == '__main__':
             ticker_base['Open_R'] = vix_ratio(vix_base, vxv_base)
             ticker_base['ATR'] = atr(ticker_base)
 
+            ticker_base = ticker_base.reset_index(drop=True)
             make_enters_file(ticker_base, analysis_tickers[t], direct)
 
         # Запускаем генератор форвардных файлов выдающий анализ всех переменных по годам
@@ -658,3 +659,6 @@ if __name__ == '__main__':
         capital = trade_count(ticker_base, direct, 0, ticker_base['Enter'], True)
 
         plot_chart(ticker_base, capital, years)
+
+        # final_table = pd.DataFrame({'Date': ticker_base['Date'], 'Capital': capital})
+        # save_csv(default_data_dir, analysis_tickers[t] + ' _finalCapital', final_table, 'new_file')
