@@ -18,11 +18,11 @@ ALPHA_KEY = 'FE8STYV4I7XHRIAI'
 COMM = 0.0055  # Коэффициент размещения денег в одну сторону на 40$ цены тикера
 CONST_COMM = 0.55  # Статичная комиссия, если объём меньше 100 акций
 SLIPP = 0.02  # При каждом стопе проскальзывание 2 цента на акцию
-R_START, R_END = 0.88, 1.1
+R_START, R_END = 0.88, 1.05
 S_START, S_END = 0.1, 5
 
 # Variables
-analysis_tickers = ['TLT']  # Чтобы скачать с yahoo, нужно выставить время в компьютере NY
+analysis_tickers = ['TQQQ']  # Чтобы скачать с yahoo, нужно выставить время в компьютере NY
 start_cap = 10000
 
 default_data_dir = 'exportTables'  # Директория
@@ -35,7 +35,7 @@ ratio_step = 0.005
 stop_step = 0.1
 forward_analyse = False  # Создавать ли форвард-файлы с метриками по годам
 file3D = False  # Создавать ли файл для 3D модели
-user_enter = False  # Указывать ли вручную метрики для построения финальной таблицы
+user_enter = True  # Указывать ли вручную метрики для построения финальной таблицы
 
 # Globals
 alpha_count = 0
@@ -406,7 +406,7 @@ def make_enters_file(file: pd.DataFrame, ticker: str, direct: int):
             enter = []
             if direct == 1 and style == 'open':
                 for i in range(len(file)):
-                    if ratio < file['Open_R'][i] or file['ATR'][i] == 0:
+                    if ratio < file['Open_R'][i] or file['ATR'][i] == 0 or file['SMA_Enter'][i] == 0:
                         enter.append(0)
                     elif ratio > file['Open_R'][i] and file["Open"][i] - stop * file['ATR'][i] >= file["Low"][i]:
                         enter.append(-1)
@@ -415,7 +415,7 @@ def make_enters_file(file: pd.DataFrame, ticker: str, direct: int):
 
             elif direct == -1 and style == 'open':
                 for i in range(len(file)):
-                    if ratio < file['Open_R'][i] or file['ATR'][i] == 0:
+                    if ratio < file['Open_R'][i] or file['ATR'][i] == 0 or file['SMA_Enter'][i] == 0:
                         enter.append(0)
                     elif ratio > file['Open_R'][i] and file["Open"][i] + stop * file['ATR'][i] <= file['High'][i]:
                         enter.append(-1)
@@ -595,20 +595,23 @@ if __name__ == '__main__':
             nonsplit_base = load_csv(str(analysis_tickers[t]) + ' NonSplit')
             vix_base = load_csv('VIX')
             vxv_base = load_csv('VXV')
+            spy_base = load_csv('SPY NonSplit')
 
             direct = 1 if ticker_base['Close'].iloc[-1] > ticker_base['Close'].iloc[0] else -1
 
             start, end = date_search(ticker_base['Date'].iloc[0], vxv_base['Date'].iloc[0]), ticker_base['Date'].iloc[
                 -1]
-            ticker_base = correct_file_by_dates(ticker_base, start, end)
-            nonsplit_base = correct_file_by_dates(nonsplit_base, start, end)
-            vix_base = correct_file_by_dates(vix_base, start, end)
-            vxv_base = correct_file_by_dates(vxv_base, start, end)
+            ticker_base = correct_file_by_dates(ticker_base, start, end).reset_index(drop=True)
+            nonsplit_base = correct_file_by_dates(nonsplit_base, start, end).reset_index(drop=True)
+            vix_base = correct_file_by_dates(vix_base, start, end).reset_index(drop=True)
+            vxv_base = correct_file_by_dates(vxv_base, start, end).reset_index(drop=True)
+            spy_base = correct_file_by_dates(spy_base, start, end).reset_index(drop=True)
 
             ticker_base['NonSpl_O'] = nonsplit_base['Open']
             ticker_base['NonSpl_C'] = nonsplit_base['Close']
             ticker_base['Open_R'] = vix_ratio(vix_base, vxv_base)
             ticker_base['ATR'] = atr(ticker_base)
+            ticker_base['SMA_Enter'] = spy_base['Above_SMA']
 
             ticker_base = ticker_base.reset_index(drop=True)
             make_enters_file(ticker_base, analysis_tickers[t], direct)
