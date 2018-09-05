@@ -22,7 +22,7 @@ R_START, R_END = 0.88, 1.05
 S_START, S_END = 0.1, 5
 
 # Variables
-analysis_tickers = ['TQQQ']  # Чтобы скачать с yahoo, нужно выставить время в компьютере NY
+analysis_tickers = ['VXX']  # Чтобы скачать с yahoo, нужно выставить время в компьютере NY
 start_cap = 10000
 
 default_data_dir = 'exportTables'  # Директория
@@ -35,7 +35,7 @@ ratio_step = 0.005
 stop_step = 0.1
 forward_analyse = False  # Создавать ли форвард-файлы с метриками по годам
 file3D = False  # Создавать ли файл для 3D модели
-user_enter = True  # Указывать ли вручную метрики для построения финальной таблицы
+user_enter = False  # Указывать ли вручную метрики для построения финальной таблицы
 
 # Globals
 alpha_count = 0
@@ -262,6 +262,59 @@ def draw_down(capital: list) -> float:
     return min(down) if min(down) != 0 else 1
 
 
+# ---------------------------------------------------------------------------------------------------------------------
+# Создаём файлы с разметками входов
+def make_enters_file(file: pd.DataFrame, ticker: str, direct: int):
+    for ratio in mit.numeric_range(R_START, R_END, ratio_step):
+        for stop in mit.numeric_range(S_START, S_END, stop_step):
+            ratio = round(ratio, 3)
+            stop = round(stop, 2)
+            print(ratio)
+            print(stop)
+
+            enter = []
+            if direct == 1 and style == 'open':
+                for i in range(len(file)):
+                    if ratio < file['Open_R'][i] or file['ATR'][i] == 0 or file['SMA_Enter'][i] == 0:
+                        enter.append(0)
+                    elif ratio > file['Open_R'][i] and file["Open"][i] - stop * file['ATR'][i] >= file["Low"][i]:
+                        enter.append(-1)
+                    else:
+                        enter.append(1)
+
+            elif direct == -1 and style == 'open':
+                for i in range(len(file)):
+                    if ratio < file['Open_R'][i] or file['ATR'][i] == 0 or file['SMA_Enter'][i] == 0:
+                        enter.append(0)
+                    elif ratio > file['Open_R'][i] and file["Open"][i] + stop * file['ATR'][i] <= file['High'][i]:
+                        enter.append(-1)
+                    else:
+                        enter.append(1)
+
+            else:
+                print('Необработанный тип входа')
+            file['R' + str(ratio) + ' S' + str(stop)] = enter
+
+    save_csv(default_data_dir, str(ticker) + ' AllEnters_'+str(style), file, 'new_file')
+
+
+# Единый файл с форвард-метриками по годам
+def forward_files(file: pd.DataFrame, ticker: str, direct: int):
+    total_table = pd.DataFrame({})
+    for ratio in mit.numeric_range(R_START, R_END, ratio_step):
+        for stop in mit.numeric_range(S_START, S_END, stop_step):
+            ratio, stop = round(ratio, 3), round(stop, 2)
+            print(ratio, stop)
+            enter = file['R' + str(ratio) + ' S' + str(stop)]
+            file['Capital'] = trade_count(file, direct, stop, enter, False)
+
+            cur_metric_table = current_metric_table(file, ratio, stop)
+            total_table = pd.concat([total_table, cur_metric_table], ignore_index=True)
+
+    total_table = total_table.sort_values(by='Year',ascending=False).reset_index(drop=True)
+    save_csv(default_data_dir + '/temp', str(ticker) + ' _' + str(style) + '_metric', total_table, 'new_file')
+
+
 # Считаем сделки
 def trade_count(file: pd.DataFrame, direct: int, stop: float, enter: list, stop_dinamic: bool) -> list:
     capital = []
@@ -390,59 +443,12 @@ def trade_count(file: pd.DataFrame, direct: int, stop: float, enter: list, stop_
         else:
             print(f'Передан или неверный директ для сделок - {direct}, или неверный style - {style}')
 
-
     return capital
 
 
-# Создаём файлы с разметками входов
-def make_enters_file(file: pd.DataFrame, ticker: str, direct: int):
-    for ratio in mit.numeric_range(R_START, R_END, ratio_step):
-        for stop in mit.numeric_range(S_START, S_END, stop_step):
-            ratio = round(ratio, 3)
-            stop = round(stop, 2)
-            print(ratio)
-            print(stop)
-
-            enter = []
-            if direct == 1 and style == 'open':
-                for i in range(len(file)):
-                    if ratio < file['Open_R'][i] or file['ATR'][i] == 0 or file['SMA_Enter'][i] == 0:
-                        enter.append(0)
-                    elif ratio > file['Open_R'][i] and file["Open"][i] - stop * file['ATR'][i] >= file["Low"][i]:
-                        enter.append(-1)
-                    else:
-                        enter.append(1)
-
-            elif direct == -1 and style == 'open':
-                for i in range(len(file)):
-                    if ratio < file['Open_R'][i] or file['ATR'][i] == 0 or file['SMA_Enter'][i] == 0:
-                        enter.append(0)
-                    elif ratio > file['Open_R'][i] and file["Open"][i] + stop * file['ATR'][i] <= file['High'][i]:
-                        enter.append(-1)
-                    else:
-                        enter.append(1)
-
-            else:
-                print('Необработанный тип входа')
-            file['R' + str(ratio) + ' S' + str(stop)] = enter
-
-    save_csv(default_data_dir, str(ticker) + ' AllEnters_'+str(style), file, 'new_file')
-
-
-# Перебирает файл по годам и обращается к форвардному тестеру
-def years_iterator(file: pd.DataFrame, ticker: str, direct: int):
-    start_year = file['Date'].iloc[0].year
-    working_date = str_dt(str(start_year) + '-01-01')
-
-    while working_date.year < datetime.now().year + 1:
-        print(working_date)
-        cut_file = file.loc[file['Date'] < working_date + rd(years=1)]
-        forward_files(cut_file, ticker, direct)
-        working_date = working_date + rd(years=1)
-
-
-# Форвардный тест и генерация файлов по годам
-def forward_files(file: pd.DataFrame, ticker: str, direct: int):
+# Текущие метрики по годам
+def current_metric_table(file: pd.DataFrame, ratio: float, stop: float) -> pd.DataFrame:
+    Years = []
     Ratio = []
     Stop = []
     CAGR = []
@@ -452,39 +458,35 @@ def forward_files(file: pd.DataFrame, ticker: str, direct: int):
     MaR = []
     SM = []
 
-    for ratio in mit.numeric_range(R_START, R_END, ratio_step):
-        for stop in mit.numeric_range(S_START, S_END, stop_step):
-            ratio, stop = round(ratio, 3), round(stop, 2)
-            print(ratio, stop)
-            enter = file['R' + str(ratio) + ' S' + str(stop)]
-            capital = trade_count(file, direct, stop, enter, False)
+    start_year = file['Date'].iloc[0].year
+    working_date = str_dt(str(start_year) + '-01-01')
+    while working_date.year < datetime.now().year + 1:
+        print(working_date)
+        cut_file = file.loc[file['Date'] < working_date + rd(years=1)]
 
-            Ratio.append(ratio)
-            Stop.append(stop)
-            CAGR.append(cagr(file, capital))
-            StDev.append(st_dev(capital))
-            DrawDown.append(draw_down(capital))
-            Sharpe.append(CAGR[-1] / StDev[-1])
-            MaR.append(abs(CAGR[-1] / DrawDown[-1]))
-            SM.append(Sharpe[-1] * MaR[-1])
+        Ratio.append(ratio)
+        Stop.append(stop)
+        CAGR.append(cagr(cut_file, list(cut_file['Capital'])))
+        StDev.append(st_dev(cut_file['Capital']))
+        DrawDown.append(draw_down(cut_file['Capital']))
+        Sharpe.append(CAGR[-1] / StDev[-1])
+        MaR.append(abs(CAGR[-1] / DrawDown[-1]))
+        SM.append(Sharpe[-1] * MaR[-1])
 
-    temp_table = pd.DataFrame({"Ratio": Ratio,
-                               "Stop": Stop,
-                               "CAGR": CAGR,
-                               "StDev": StDev,
-                               "DrawDown": DrawDown,
-                               "Sharpe": Sharpe,
-                               "MaR": MaR,
-                               "SM": SM},
-                              columns=["Ratio", "Stop", "CAGR", "StDev", "DrawDown", "Sharpe", "MaR", "SM"]
-                              )
-    temp_table = temp_table.sort_values(by='SM',ascending=False).reset_index(drop=True)
-    year_for_use = file['Date'].iloc[-1].year + 1
+        working_date = working_date + rd(years=1)
+        Years.append(working_date.year)
 
-    save_csv(default_data_dir + '/temp', str(ticker) + ' _' + str(style) + '_metricFor ' + str(year_for_use),
-             temp_table, 'new_file')
-
-    print(len(file), year_for_use)
+    return pd.DataFrame({'Year': Years,
+                         "Ratio": Ratio,
+                         "Stop": Stop,
+                         "CAGR": CAGR,
+                         "StDev": StDev,
+                         "DrawDown": DrawDown,
+                         "Sharpe": Sharpe,
+                         "MaR": MaR,
+                         "SM": SM},
+                        columns=['Year', "Ratio", "Stop", "CAGR", "StDev", "DrawDown", "Sharpe", "MaR", "SM"]
+                        )
 
 
 # Создаём файл для 3D модели
@@ -514,7 +516,7 @@ def years_dict(file: pd.DataFrame, ticker: str) -> dict:
                 print(f'Для {ticker} введите Ratio и Stop для {cur_year} года через пробел')
                 temp[str(cur_year)] = [float(_) for _ in input().split()]
             else:
-                temp[str(cur_year)] = [0.94, 0.5]
+                temp[str(cur_year)] = [0.975, 0.8]
     return temp
 
 
@@ -572,10 +574,9 @@ def plot_chart(file: pd.DataFrame, capital: list, years_dict: dict):
     plt.show()
 
 
-# Пока, чтобы не переделывать код, оставим как есть. В будущем, большое количество тикеров можно загнать в словари
+# Задачи
 '''
 4) Докачка, если финальные дни не соотвествуют текущей дате
-5) Дорасчёт новых строчек в уже посчитанных файлах
 '''
 
 if __name__ == '__main__':
@@ -620,11 +621,12 @@ if __name__ == '__main__':
         if forward_analyse:
             ticker_base = load_csv(str(analysis_tickers[t]) + ' AllEnters_' + str(style))
             direct = 1 if ticker_base['Close'].iloc[-1] > ticker_base['Close'].iloc[0] else -1
-            years_iterator(ticker_base, analysis_tickers[t], direct)
+            forward_files(ticker_base, analysis_tickers[t], direct)
 
         # Создаём файл для отрисовки 3D-модели
         if file3D:
-            ticker_base = load_csv(analysis_tickers[t] + ' _open_metricFor 2019', default_data_dir + '/temp')
+            ticker_base = load_csv(analysis_tickers[t] + ' _open_metric', default_data_dir + '/temp')
+            ticker_base = ticker_base.loc[ticker_base['Year'] == int(datetime.now().year + 1)].reset_index(drop=True)
             model_3D(ticker_base, analysis_tickers[t])
 
         # Выводим plot капитала, на основе указанных переменных для разных лет
