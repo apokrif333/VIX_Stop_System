@@ -22,7 +22,7 @@ R_START, R_END = 0.88, 1.05
 S_START, S_END = 0.1, 5
 
 # Variables
-analysis_tickers = ['VXX', 'TQQQ']  # Чтобы скачать с yahoo, нужно выставить время в компьютере NY
+analysis_tickers = ['VXX']  # Чтобы скачать с yahoo, нужно выставить время в компьютере NY
 start_cap = 10000
 
 default_data_dir = 'exportTables'  # Директория
@@ -33,9 +33,9 @@ end_date = datetime.now()
 style = 'open'.lower()  # open - выстраивает логику с открытия сессии, close, выстраивает логику на закрытие
 ratio_step = 0.005
 stop_step = 0.1
-forward_analyse = True  # Создавать ли форвард-файлы с метриками по годам
-file3D = True  # Создавать ли файл для 3D модели
-draw_chart = False  # Выводить ли график
+forward_analyse = False  # Создавать ли форвард-файлы с метриками по годам
+file3D = False  # Создавать ли файл для 3D модели
+draw_chart = True  # Выводить ли график
 user_enter = False  # Указывать ли вручную метрики для построения финальной таблицы
 
 # Globals
@@ -192,14 +192,22 @@ def download_yahoo(ticker: str, base_dir: str = default_data_dir) -> pd.DataFram
 
 
 # ---------------------------------------------------------------------------------------------------------------------
-# Определяем стартовые даты
-def date_search(f_date: datetime, *args: datetime) -> datetime:
+# Ищем самую молодую дату
+def newest_date_search(f_date: datetime, *args: datetime) -> datetime:
     newest_date = f_date
     for arg in args:
         if arg > newest_date:
             newest_date = arg
-
     return newest_date
+
+
+# Ищем самую старую дату
+def oldest_date_search(f_date: datetime, *args: datetime) -> datetime:
+    oldest_date = f_date
+    for arg in args:
+        if arg < oldest_date:
+            oldest_date = arg
+    return oldest_date
 
 
 # Обрезаем файлы согласно определённым датам
@@ -517,7 +525,7 @@ def years_dict(file: pd.DataFrame, ticker: str) -> dict:
                 print(f'Для {ticker} введите Ratio и Stop для {cur_year} года через пробел')
                 temp[str(cur_year)] = [float(_) for _ in input().split()]
             else:
-                temp[str(cur_year)] = [0.975, 0.8]
+                temp[str(cur_year)] = [0.94, 0.3]
     return temp
 
 
@@ -593,16 +601,18 @@ if __name__ == '__main__':
         # Создаём файл со всеми вариантами входов, если он не создан
         if os.path.isfile(os.path.join(default_data_dir,
                                        str(analysis_tickers[t]) + ' AllEnters_' + str(style) + '.csv')) is False:
+
             ticker_base = load_csv(str(analysis_tickers[t]))
             nonsplit_base = load_csv(str(analysis_tickers[t]) + ' NonSplit')
             vix_base = load_csv('VIX')
             vxv_base = load_csv('VXV')
-            spy_base = load_csv('SPY NonSplit')
 
             direct = 1 if ticker_base['Close'].iloc[-1] > ticker_base['Close'].iloc[0] else -1
+            start = newest_date_search(ticker_base['Date'].iloc[0], nonsplit_base['Date'].iloc[0],
+                                        vix_base['Date'].iloc[0], vxv_base['Date'].iloc[0])
+            end = oldest_date_search(ticker_base['Date'].iloc[-1], nonsplit_base['Date'].iloc[-1],
+                                     vix_base['Date'].iloc[-1], vxv_base['Date'].iloc[-1])
 
-            start, end = date_search(ticker_base['Date'].iloc[0], vxv_base['Date'].iloc[0]), ticker_base['Date'].iloc[
-                -1]
             ticker_base = correct_file_by_dates(ticker_base, start, end).reset_index(drop=True)
             nonsplit_base = correct_file_by_dates(nonsplit_base, start, end).reset_index(drop=True)
             vix_base = correct_file_by_dates(vix_base, start, end).reset_index(drop=True)
