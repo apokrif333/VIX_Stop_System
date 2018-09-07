@@ -22,7 +22,7 @@ R_START, R_END = 0.88, 1.05
 S_START, S_END = 0.1, 5
 
 # Variables
-analysis_tickers = ['VXX']  # Чтобы скачать с yahoo, нужно выставить время в компьютере NY
+analysis_tickers = ['QQQ', 'DIA', 'IBB']  # Чтобы скачать с yahoo, нужно выставить время в компьютере NY
 start_cap = 10000
 
 default_data_dir = 'exportTables'  # Директория
@@ -595,7 +595,7 @@ if __name__ == '__main__':
             download_yahoo(f)
         if os.path.isfile(os.path.join(default_data_dir, str(f) + ' NonSplit.csv')) is False or download_data:
             download_alpha(f)
-
+    input()
     # Основной рабочий блок
     for t in range(len(analysis_tickers)):
         # Создаём файл со всеми вариантами входов, если он не создан
