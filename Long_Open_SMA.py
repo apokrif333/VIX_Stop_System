@@ -22,7 +22,7 @@ R_START, R_END = 0.88, 1.05
 S_START, S_END = 0.1, 5
 
 # Variables
-analysis_tickers = ['QQQ', 'DIA', 'IBB']  # Чтобы скачать с yahoo, нужно выставить время в компьютере NY
+analysis_tickers = ['TQQQ']  # Чтобы скачать с yahoo, нужно выставить время в компьютере NY
 start_cap = 10000
 
 default_data_dir = 'exportTables'  # Директория
@@ -37,6 +37,7 @@ forward_analyse = False  # Создавать ли форвард-файлы с 
 file3D = False  # Создавать ли файл для 3D модели
 draw_chart = True  # Выводить ли график
 user_enter = False  # Указывать ли вручную метрики для построения финальной таблицы
+set_ratio_stop_chart = [1.04, 0.7]
 
 # Globals
 alpha_count = 0
@@ -525,7 +526,7 @@ def years_dict(file: pd.DataFrame, ticker: str) -> dict:
                 print(f'Для {ticker} введите Ratio и Stop для {cur_year} года через пробел')
                 temp[str(cur_year)] = [float(_) for _ in input().split()]
             else:
-                temp[str(cur_year)] = [0.94, 0.3]
+                temp[str(cur_year)] = set_ratio_stop_chart
     return temp
 
 
@@ -678,5 +679,5 @@ if __name__ == '__main__':
 
             plot_chart(ticker_base, capital, years)
 
-            # final_table = pd.DataFrame({'Date': ticker_base['Date'], 'Capital': capital})
-            # save_csv(default_data_dir, analysis_tickers[t] + ' _finalCapital', final_table, 'new_file')
+            final_table = pd.DataFrame({'Date': ticker_base['Date'], 'Capital': capital})
+            save_csv(default_data_dir, analysis_tickers[t] + ' _finalCapital', final_table, 'new_file')
