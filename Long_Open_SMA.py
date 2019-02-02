@@ -33,7 +33,7 @@ end_date = datetime.now()
 style = 'open'.lower()  # open - выстраивает логику с открытия сессии, close, выстраивает логику на закрытие
 ratio_step = 0.005
 stop_step = 0.1
-forward_analyse = False  # Создавать ли форвард-файлы с метриками по годам
+forward_analyse = True  # Создавать ли форвард-файлы с метриками по годам
 file3D = False  # Создавать ли файл для 3D модели
 draw_chart = True  # Выводить ли график
 user_enter = False  # Указывать ли вручную метрики для построения финальной таблицы
@@ -193,6 +193,20 @@ def download_yahoo(ticker: str, base_dir: str = default_data_dir) -> pd.DataFram
 
 
 # ---------------------------------------------------------------------------------------------------------------------
+# Считаем SMA_200 для SPY
+def calculate_sma(df: pd.DataFrame, ticker: str):
+    df['Date'] = pd.to_datetime(df['Date'], yearfirst=True)
+    df['SMA_' + str(200)] = round(df['Close'].rolling(200).mean(), 2)
+
+    df['Above_SMA'] = 0
+    for i in range(1, len(df)-1):
+        if df['Date'][i].month != df['Date'][i-1].month:
+            df.loc[i, 'Above_SMA'] = int(df['Close'][i-1] > df['SMA_' + str(200)][i-1])
+        else:
+            df.loc[i, 'Above_SMA'] = df['Above_SMA'][i-1]
+    save_csv(default_data_dir, ticker, df, 'new_file')
+
+
 # Ищем самую молодую дату
 def newest_date_search(f_date: datetime, *args: datetime) -> datetime:
     newest_date = f_date
@@ -567,7 +581,7 @@ def plot_chart(file: pd.DataFrame, capital: list, years_dict: dict):
                                  'v4': values[int(len(values) * 0.75):len(values)],
                                  })
 
-    fig = plt.figure(figsize=(12.8, 8.6), dpi=80)
+    fig = plt.figure(figsize=(20, 10), dpi=80)
 
     ax1 = fig.add_subplot(6, 1, (1, 5))
     ax1.plot(file['Date'], down, dashes=[6, 4], color="darkgreen", alpha=0.5)
@@ -597,6 +611,9 @@ if __name__ == '__main__':
         if os.path.isfile(os.path.join(default_data_dir, str(f) + ' NonSplit.csv')) is False or download_data:
             download_alpha(f)
 
+    spy_base = load_csv('SPY')
+    calculate_sma(spy_base, 'SPY')
+
     # Основной рабочий блок
     for t in range(len(analysis_tickers)):
         # Создаём файл со всеми вариантами входов, если он не создан
@@ -607,7 +624,7 @@ if __name__ == '__main__':
             nonsplit_base = load_csv(str(analysis_tickers[t]) + ' NonSplit')
             vix_base = load_csv('VIX')
             vxv_base = load_csv('VXV')
-            spy_base = load_csv('SPY NonSplit')
+            spy_base = load_csv('SPY')
 
             direct = 1 if ticker_base['Close'].iloc[-1] > ticker_base['Close'].iloc[0] else -1
             start = newest_date_search(ticker_base['Date'].iloc[0], nonsplit_base['Date'].iloc[0],

@@ -22,7 +22,7 @@ R_START, R_END = 0.88, 1.05
 S_START, S_END = 0.1, 5
 
 # Variables
-analysis_tickers = ['TQQQ']  # Чтобы скачать с yahoo, нужно выставить время в компьютере NY
+analysis_tickers = ['VXX']  # Чтобы скачать с yahoo, нужно выставить время в компьютере NY
 start_cap = 10000
 
 default_data_dir = 'exportTables'  # Директория
@@ -36,7 +36,8 @@ stop_step = 0.1
 forward_analyse = False  # Создавать ли форвард-файлы с метриками по годам
 file3D = False  # Создавать ли файл для 3D модели
 draw_chart = True  # Выводить ли график
-user_enter = True  # Указывать ли вручную метрики для построения финальной таблицы
+user_enter = False  # Указывать ли вручную метрики для построения финальной таблицы
+set_ratio_stop_chart = [0.91, 0.3]
 
 # Globals
 alpha_count = 0
@@ -62,12 +63,18 @@ def st_date(file: pd.DataFrame):
 
 # Формат цен
 def form_price(n) -> float:
-    return round(float(n), 2)
+    if empty_obj(n):
+        return round(float(n), 2)
+    else:
+        return n
 
 
 # Формат объёма
 def form_volume(n) -> int:
-    return int(round(float(n), 0))
+    if empty_obj(n):
+        return int(round(float(n), 0))
+    else:
+        return n
 
 
 # Не пустой ли объект
@@ -76,7 +83,7 @@ def empty_obj(n) -> bool:
 
 
 # Словарь с ценами
-def dic_with_prices(prices: dict, ticker: str, date: datetime, open, high, low, close, volume):
+def dic_with_prices(prices: dict, ticker: str, date: datetime, open, high, low, close, volume, dividend=0):
     if date.weekday() > 5:
         print(f'Найден выходной в {ticker} на {date}')
         return
@@ -96,7 +103,7 @@ def dic_with_prices(prices: dict, ticker: str, date: datetime, open, high, low, 
     if error_vol:
         print(f'В {ticker} на {date} нет объёма')
 
-    prices[date] = [open, high, low, close, volume]
+    prices[date] = [open, high, low, close, volume, dividend]
 
 
 # Сохраняем csv файл
@@ -171,7 +178,7 @@ def download_alpha(ticker: str, base_dir: str = default_data_dir) -> pd.DataFram
 def download_yahoo(ticker: str, base_dir: str = default_data_dir) -> pd.DataFrame:
     try:
         yf = YahooFinancials(ticker)
-        data = yf.get_historical_stock_data(dt_str(start_date), dt_str(end_date), 'daily')
+        data = yf.get_historical_price_data(dt_str(start_date), dt_str(end_date), 'daily')
     except Exception as err:
         print(f'Unable to read data for {ticker}: {err}')
         return pd.DataFrame({})
@@ -183,13 +190,17 @@ def download_yahoo(ticker: str, base_dir: str = default_data_dir) -> pd.DataFram
 
     prices = {}
     for rec in sorted(data[ticker]['prices'], key=lambda r: r['date']):
-        if rec.get('type') is None:
-            date = datetime.strptime(rec['formatted_date'], '%Y-%m-%d')
-            dic_with_prices(prices, ticker, date, rec['open'], rec['high'], rec['low'], rec['close'], rec['volume'])
+        date = datetime.strptime(rec['formatted_date'], '%Y-%m-%d')
+        dic_with_prices(prices, ticker, date, rec['open'], rec['high'], rec['low'], rec['close'], rec['volume'])
 
-    frame = pd.DataFrame.from_dict(prices, orient='index', columns=['Open', 'High', 'Low', 'Close', 'Volume'])
+    if 'splits' in data[ticker]['eventsData']:
+        for date, rec in sorted(data[ticker]['eventsData']['splits'].items(), key=lambda r: r[0]):
+            date = datetime.strptime(date, '%Y-%m-%d')
+            print(f"{ticker} has split {rec['splitRatio']} for {date}")
+
+    frame = pd.DataFrame.from_dict(prices, orient='index',
+                                   columns=['Open', 'High', 'Low', 'Close', 'Volume', 'Dividend'])
     save_csv(base_dir, ticker, frame, 'yahoo')
-
 
 # ---------------------------------------------------------------------------------------------------------------------
 # Ищем самую молодую дату
@@ -525,7 +536,7 @@ def years_dict(file: pd.DataFrame, ticker: str) -> dict:
                 print(f'Для {ticker} введите Ratio и Stop для {cur_year} года через пробел')
                 temp[str(cur_year)] = [float(_) for _ in input().split()]
             else:
-                temp[str(cur_year)] = [0.94, 0.3]
+                temp[str(cur_year)] = set_ratio_stop_chart
     return temp
 
 
@@ -566,7 +577,7 @@ def plot_chart(file: pd.DataFrame, capital: list, years_dict: dict):
                                  'v4': values[int(len(values) * 0.75):len(values)],
                                  })
 
-    fig = plt.figure(figsize=(12.8, 8.6), dpi=80)
+    fig = plt.figure(figsize=(20, 10), dpi=80)
 
     ax1 = fig.add_subplot(6, 1, (1, 5))
     ax1.plot(file['Date'], down, dashes=[6, 4], color="darkgreen", alpha=0.5)
@@ -589,12 +600,14 @@ def plot_chart(file: pd.DataFrame, capital: list, years_dict: dict):
 '''
 
 if __name__ == '__main__':
-    # Блок загрузки данных
+    # Блок загрузки данных. Так, все файлы я делаю вручную, а если качать, то они перезаписываются.
     for f in analysis_tickers:
         if os.path.isfile(os.path.join(default_data_dir, str(f) + '.csv')) is False or download_data:
-            download_yahoo(f)
+            pass
+            # download_yahoo(f)
         if os.path.isfile(os.path.join(default_data_dir, str(f) + ' NonSplit.csv')) is False or download_data:
-            download_alpha(f)
+            pass
+            # download_alpha(f)
 
     # Основной рабочий блок
     for t in range(len(analysis_tickers)):
@@ -675,5 +688,5 @@ if __name__ == '__main__':
 
             plot_chart(ticker_base, capital, years)
 
-            # final_table = pd.DataFrame({'Date': ticker_base['Date'], 'Capital': capital})
-            # save_csv(default_data_dir, analysis_tickers[t] + ' _finalCapital', final_table, 'new_file')
+            final_table = pd.DataFrame({'Date': ticker_base['Date'], 'Capital': capital})
+            save_csv(default_data_dir, analysis_tickers[t] + ' _finalCapital', final_table, 'new_file')
