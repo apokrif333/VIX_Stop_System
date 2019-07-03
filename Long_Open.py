@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import more_itertools as mit
+import multiprocessing
 import statistics as stat
 import matplotlib.pyplot as plt
 import math
@@ -8,6 +9,7 @@ import time
 import cmath
 import os
 
+from tqdm import tqdm
 from alpha_vantage.timeseries import TimeSeries
 from yahoofinancials import YahooFinancials
 from datetime import datetime
@@ -18,12 +20,12 @@ ALPHA_KEY = 'FE8STYV4I7XHRIAI'
 COMM = 0.0055  # Коэффициент размещения денег в одну сторону на 40$ цены тикера
 CONST_COMM = 0.55  # Статичная комиссия, если объём меньше 100 акций
 SLIPP = 0.02  # При каждом стопе проскальзывание 2 цента на акцию
-R_START, R_END = 0.88, 1.05
+R_START, R_END = 0.88, 1.1
 S_START, S_END = 0.1, 5
 
 # Variables
 analysis_tickers = ['VXX']  # Чтобы скачать с yahoo, нужно выставить время в компьютере NY
-start_cap = 10000
+start_cap = 10_000
 
 default_data_dir = 'exportTables'  # Директория
 download_data = False  # Качает сплитованные данные с yahoo и не сплитованные с alpha. На alpha задержка 15 сек
@@ -33,9 +35,9 @@ end_date = datetime.now()
 style = 'open'.lower()  # open - выстраивает логику с открытия сессии, close, выстраивает логику на закрытие
 ratio_step = 0.005
 stop_step = 0.1
-forward_analyse = False  # Создавать ли форвард-файлы с метриками по годам
+forward_analyse = True  # Создавать ли форвард-файлы с метриками по годам
 file3D = False  # Создавать ли файл для 3D модели
-draw_chart = True  # Выводить ли график
+draw_chart = False  # Выводить ли график
 user_enter = False  # Указывать ли вручную метрики для построения финальной таблицы
 set_ratio_stop_chart = [0.91, 0.3]
 
@@ -202,6 +204,7 @@ def download_yahoo(ticker: str, base_dir: str = default_data_dir) -> pd.DataFram
                                    columns=['Open', 'High', 'Low', 'Close', 'Volume', 'Dividend'])
     save_csv(base_dir, ticker, frame, 'yahoo')
 
+
 # ---------------------------------------------------------------------------------------------------------------------
 # Ищем самую молодую дату
 def newest_date_search(f_date: datetime, *args: datetime) -> datetime:
@@ -284,8 +287,9 @@ def draw_down(capital: list) -> float:
 
 # ---------------------------------------------------------------------------------------------------------------------
 # Создаём файлы с разметками входов
-def make_enters_file(file: pd.DataFrame, ticker: str, direct: int):
-    for ratio in mit.numeric_range(R_START, R_END, ratio_step):
+def make_enters_file(file: pd.DataFrame, direct: int, r_start: float, r_end: float) -> pd.DataFrame:
+    temp_df = pd.DataFrame()
+    for ratio in mit.numeric_range(r_start, r_end, ratio_step):
         for stop in mit.numeric_range(S_START, S_END, stop_step):
             ratio = round(ratio, 3)
             stop = round(stop, 2)
@@ -313,15 +317,16 @@ def make_enters_file(file: pd.DataFrame, ticker: str, direct: int):
 
             else:
                 print('Необработанный тип входа')
-            file['R' + str(ratio) + ' S' + str(stop)] = enter
 
-    save_csv(default_data_dir, str(ticker) + ' AllEnters_'+str(style), file, 'new_file')
+            temp_df['R' + str(ratio) + ' S' + str(stop)] = enter
+
+    return temp_df
 
 
 # Единый файл с форвард-метриками по годам
-def forward_files(file: pd.DataFrame, ticker: str, direct: int):
+def forward_files(file: pd.DataFrame, direct: int, r_start: float, r_end: float) -> pd.DataFrame:
     total_table = pd.DataFrame({})
-    for ratio in mit.numeric_range(R_START, R_END, ratio_step):
+    for ratio in tqdm(mit.numeric_range(r_start, r_end, ratio_step)):
         for stop in mit.numeric_range(S_START, S_END, stop_step):
             ratio, stop = round(ratio, 3), round(stop, 2)
             print(ratio, stop)
@@ -331,8 +336,7 @@ def forward_files(file: pd.DataFrame, ticker: str, direct: int):
             cur_metric_table = current_metric_table(file, ratio, stop)
             total_table = pd.concat([total_table, cur_metric_table], ignore_index=True)
 
-    total_table = total_table.sort_values(by='Year',ascending=False).reset_index(drop=True)
-    save_csv(default_data_dir + '/temp', str(ticker) + ' _' + str(style) + '_metric', total_table, 'new_file')
+    return total_table
 
 
 # Считаем сделки
@@ -609,6 +613,16 @@ if __name__ == '__main__':
             pass
             # download_alpha(f)
 
+    # Multiprocess
+    cores = 6
+    ratio_range = math.ceil((R_END - R_START) / ratio_step / cores) * ratio_step
+    r_start_list = []
+    r_end_list = []
+    for core in range(cores):
+        r_start_list.append(round(R_START + ratio_range * core, 3))
+        r_end_list.append(round(R_START + ratio_range * (core + 1), 3))
+    multi_cores = multiprocessing.Pool(cores)
+
     # Основной рабочий блок
     for t in range(len(analysis_tickers)):
         # Создаём файл со всеми вариантами входов, если он не создан
@@ -622,7 +636,7 @@ if __name__ == '__main__':
 
             direct = 1 if ticker_base['Close'].iloc[-1] > ticker_base['Close'].iloc[0] else -1
             start = newest_date_search(ticker_base['Date'].iloc[0], nonsplit_base['Date'].iloc[0],
-                                        vix_base['Date'].iloc[0], vxv_base['Date'].iloc[0])
+                                        vix_base['Date'].iloc[0], vxv_base['Date'].iloc[0], start_date)
             end = oldest_date_search(ticker_base['Date'].iloc[-1], nonsplit_base['Date'].iloc[-1],
                                      vix_base['Date'].iloc[-1], vxv_base['Date'].iloc[-1])
 
@@ -637,13 +651,30 @@ if __name__ == '__main__':
             ticker_base['ATR'] = atr(ticker_base)
 
             ticker_base = ticker_base.reset_index(drop=True)
-            make_enters_file(ticker_base, analysis_tickers[t], direct)
+
+            enter_df = multi_cores.starmap(make_enters_file,
+                                           zip([ticker_base] * cores, [direct] * cores, r_start_list, r_end_list))
+            for df in enter_df:
+                ticker_base = pd.concat([ticker_base, df], axis=1)
+            save_csv(default_data_dir, str(analysis_tickers[t]) + ' AllEnters_' + str(style), ticker_base, 'new_file')
 
         # Запускаем генератор форвардных файлов выдающий анализ всех переменных по годам
         if forward_analyse:
             ticker_base = load_csv(str(analysis_tickers[t]) + ' AllEnters_' + str(style))
+            ticker_base = ticker_base[ticker_base.Date >= start_date].reset_index(drop=True)
+            ticker_base.loc[0, 9:] = 0
+
             direct = 1 if ticker_base['Close'].iloc[-1] > ticker_base['Close'].iloc[0] else -1
-            forward_files(ticker_base, analysis_tickers[t], direct)
+            enter_df = multi_cores.starmap(forward_files,
+                                           zip([ticker_base] * cores, [direct] * cores, r_start_list, r_end_list))
+            total_table = pd.DataFrame()
+            for df in enter_df:
+                total_table = pd.concat([total_table, df], ignore_index=True)
+            total_table = total_table.sort_values(by='Year', ascending=False).reset_index(drop=True)
+            save_csv(default_data_dir + '/temp',
+                     str(analysis_tickers[t]) + ' _' + str(style) + '_metric',
+                     total_table,
+                     'new_file')
 
         # Создаём файл для отрисовки 3D-модели
         if file3D:
