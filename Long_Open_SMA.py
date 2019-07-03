@@ -29,7 +29,7 @@ start_cap = 10_000
 
 default_data_dir = 'exportTables'  # Директория
 download_data = False  # Качает сплитованные данные с yahoo и не сплитованные с alpha. На alpha задержка 15 сек
-start_date = datetime(1990, 1, 1)  # Для yahoo, alpha выкачает всю доступную историю
+start_date = datetime(2012, 1, 1)  # Для yahoo, alpha выкачает всю доступную историю
 end_date = datetime.now()
 
 style = 'open'.lower()  # open - выстраивает логику с открытия сессии, close, выстраивает логику на закрытие
@@ -630,8 +630,9 @@ if __name__ == '__main__':
     # Основной рабочий блок
     for t in range(len(analysis_tickers)):
         # Создаём файл со всеми вариантами входов, если он не создан
-        if os.path.isfile(os.path.join(default_data_dir,
-                                       str(analysis_tickers[t]) + ' AllEnters_' + str(style) + '.csv')) is False:
+        if os.path.isfile(
+                os.path.join(default_data_dir,
+                             str(analysis_tickers[t]) + ' AllEnters_' + str(style) + '_sma' + '.csv')) is False:
 
             ticker_base = load_csv(str(analysis_tickers[t]))
             nonsplit_base = load_csv(str(analysis_tickers[t]) + ' NonSplit')
@@ -663,7 +664,7 @@ if __name__ == '__main__':
                                            zip([ticker_base] * cores, [direct] * cores, r_start_list, r_end_list))
             for df in enter_df:
                 ticker_base = pd.concat([ticker_base, df], axis=1)
-            save_csv(default_data_dir, str(analysis_tickers[t]) + ' AllEnters_' + str(style), ticker_base, 'new_file')
+            save_csv(default_data_dir, str(analysis_tickers[t]) + ' AllEnters_' + str(style) + '_sma', ticker_base, 'new_file')
 
         # Запускаем генератор форвардных файлов выдающий анализ всех переменных по годам
         if forward_analyse:
@@ -679,7 +680,7 @@ if __name__ == '__main__':
                 total_table = pd.concat([total_table, df], ignore_index=True)
             total_table = total_table.sort_values(by='Year', ascending=False).reset_index(drop=True)
             save_csv(default_data_dir + '/temp',
-                     str(analysis_tickers[t]) + ' _' + str(style) + '_metric',
+                     str(analysis_tickers[t]) + ' _' + str(style) + '_metric' + '_sma',
                      total_table,
                      'new_file')
 
